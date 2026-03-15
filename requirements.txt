@@ -1,0 +1,33 @@
+# Core ML / fine-tuning
+torch>=2.2.0
+transformers>=4.40.0
+peft>=0.10.0
+trl>=0.8.6
+accelerate>=0.29.0
+bitsandbytes>=0.43.0
+datasets>=2.18.0
+sentencepiece>=0.2.0
+tokenizers>=0.19.0
+
+# API clients (teacher LLM providers)
+openai>=1.25.0
+google-generativeai>=0.5.0
+
+# Data processing
+numpy>=1.26.0
+scipy>=1.13.0
+pandas>=2.2.0
+tqdm>=4.66.0
+pyyaml>=6.0.1
+
+# Security / malware report processing
+# poppler-utils must be installed via system package manager:
+#   sudo apt-get install poppler-utils
+pdfminer.six>=20221105
+python-magic>=0.4.27
+
+# Evaluation
+scikit-learn>=1.4.0
+
+# Configuration
+omegaconf>=2.3.0
