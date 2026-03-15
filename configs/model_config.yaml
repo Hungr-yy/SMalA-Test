@@ -1,0 +1,75 @@
+# SMalRe – Model Configuration
+# ============================================================
+# Edit this file to configure the teacher LLM, student SLM,
+# training hyperparameters, and distillation loop settings.
+# ============================================================
+
+# ------------------------------------------------------------------
+# Teacher LLM
+# ------------------------------------------------------------------
+teacher:
+  # Provider: openai | google | qwen | together
+  provider: openai
+  # Model identifier
+  model: gpt-4o
+  # Leave blank to read from OPENAI_API_KEY / GOOGLE_API_KEY / etc.
+  api_key: ""
+  temperature: 0.7
+
+# ------------------------------------------------------------------
+# Student SLM
+# ------------------------------------------------------------------
+student:
+  # HuggingFace model ID or local path
+  model_name_or_path: meta-llama/Meta-Llama-3-8B
+
+# ------------------------------------------------------------------
+# Output
+# ------------------------------------------------------------------
+output_dir: outputs/student_adapter
+
+# ------------------------------------------------------------------
+# Training (LoRA / QLoRA)
+# ------------------------------------------------------------------
+training:
+  # Set to true for QLoRA (4-bit quantisation) – reduces VRAM significantly
+  use_4bit: true
+  learning_rate: 0.0002
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  # Maximum token length for training examples
+  max_seq_length: 2048
+
+# ------------------------------------------------------------------
+# LoRA adapter configuration
+# ------------------------------------------------------------------
+lora:
+  # Rank – higher values → more capacity but more parameters
+  r: 16
+  # Scaling factor (commonly set to 2*r)
+  alpha: 32
+  dropout: 0.05
+
+# ------------------------------------------------------------------
+# Exam generation
+# ------------------------------------------------------------------
+exam:
+  # Questions generated per distillation round
+  num_questions: 5
+
+# ------------------------------------------------------------------
+# Curriculum generation
+# ------------------------------------------------------------------
+curriculum:
+  # Training examples generated per round.
+  # For production use 10000–100000; keep small for quick iteration.
+  num_examples: 100
+
+# ------------------------------------------------------------------
+# Distillation loop (used by main.py)
+# ------------------------------------------------------------------
+loop:
+  max_rounds: 5
+  target_accuracy: 0.80
+  truncate_input: true
