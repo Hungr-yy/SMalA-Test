@@ -6,7 +6,7 @@
 
 ## Overview
 
-SMalRe implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Qwen-Max) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3 8B, Phi-3, Gemma 7B, or DeepSeek-R1-Distill-Qwen-7B).
+SMalRe implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Qwen-Max) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3 8B, Phi-3, Gemma 7B, or DeepSeek-R1-Distill-Qwen-7B). You can read more about the
 
 ```
 Teacher LLM (GPT-4o / Gemini 2.5 Pro / Qwen-Max)
@@ -131,11 +131,19 @@ python3 -m CybersecurityBenchmarks.benchmark.run \
 
 ---
 
+```
 ## Context Window Management
 
 Hybrid Analysis sandbox reports often exceed 128k tokens. `data_filter.py` implements pre-filtering that retains only essential fields (`total_processes`, `mitre_attcks`, `signatures`) with negligible impact on benchmark performance.
 
 ---
+```
+
+## Acknowledgements and Disclaimers
+
+SmalRe is a project originally made for Nanyang Technological University's Final Year Project Module SC4079. Special thanks to Gu Wenbo and Professor Liu Yang for their guidance and support in academic matters.
+
+SmalRe has not been implemented or tested in a production environment. Please use it at your own risk. None of the project contributors assume any responsibility for any damages through this project.
 
 ## License
 
