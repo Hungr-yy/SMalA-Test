@@ -1,6 +1,6 @@
 # Benchmark Data
 
-This directory stores evaluation datasets for the SMalRe malware analysis benchmark,
+This directory stores evaluation datasets for the SMalA malware analysis benchmark,
 compatible with the **CyberSOCEval** framework.
 
 ---
