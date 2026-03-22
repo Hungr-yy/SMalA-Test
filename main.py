@@ -236,7 +236,7 @@ def _build_exam_prompt(q: dict[str, Any]) -> str:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="SMalRe – iterative teacher-student distillation for malware analysis"
+        description="SMalA – iterative teacher-student distillation for malware analysis"
     )
     parser.add_argument(
         "--config",

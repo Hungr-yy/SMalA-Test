@@ -1,4 +1,4 @@
-# SMalRe – Model Configuration
+# SMalA – Model Configuration
 # ============================================================
 # Edit this file to configure the teacher LLM, student SLM,
 # training hyperparameters, and distillation loop settings.

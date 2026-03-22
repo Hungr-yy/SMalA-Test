@@ -35,7 +35,7 @@ Student SLM fine-tuning (LoRA / QLoRA via PEFT)
 ## Repository Structure
 
 ```
-SMalRe/
+SMalA/
 ├── main.py                          # Iterative distillation orchestrator
 ├── teacher_engine.py                # Teacher LLM: exam, evaluation, curriculum
 ├── student_trainer.py               # Student SLM: LoRA/QLoRA fine-tuning
