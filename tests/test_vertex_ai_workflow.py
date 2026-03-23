@@ -35,7 +35,7 @@ def _make_vertex_ai_base_config() -> dict[str, Any]:
     return {
         "teacher": {"provider": "openai", "model": "gpt-4o", "temperature": 0.7},
         "student": {
-            "model_name_or_path": "meta-llama/Llama-3.3-8B-Instruct",
+            "model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct",
             "backend": "vertex_ai",
         },
         "vertex_ai": {
@@ -291,7 +291,7 @@ class TestHFTokenPassthrough:
         from student_trainer import VertexAIStudentTrainer
 
         trainer = VertexAIStudentTrainer(
-            model_name_or_path="meta-llama/Llama-3.3-8B-Instruct",
+            model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
             project="test-project",
             location="us-central1",
             staging_bucket="gs://test-bucket/smala",
@@ -436,7 +436,7 @@ class TestRound1InferenceFallback:
         from student_trainer import VertexAIStudentTrainer
 
         trainer = VertexAIStudentTrainer(
-            model_name_or_path="meta-llama/Llama-3.3-8B-Instruct",
+            model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
             project="test-project",
             location="us-central1",
             staging_bucket="gs://test-bucket/smala",
@@ -551,7 +551,7 @@ class TestRound1InferenceFallback:
         from student_trainer import VertexAIStudentTrainer
 
         trainer = VertexAIStudentTrainer(
-            model_name_or_path="meta-llama/Llama-3.3-8B-Instruct",
+            model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
             project="test-project",
             location="us-central1",
             staging_bucket="gs://test-bucket/smala",
@@ -580,7 +580,7 @@ class TestRound1InferenceFallback:
         from student_trainer import VertexAIStudentTrainer
 
         trainer = VertexAIStudentTrainer(
-            model_name_or_path="meta-llama/Llama-3.3-8B-Instruct",
+            model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
             project="test-project",
             location="us-central1",
             staging_bucket="gs://test-bucket/smala",
@@ -597,7 +597,7 @@ class TestRound1InferenceFallback:
 
         upload_kwargs = mock_aiplatform.Model.upload.call_args.kwargs
         env_vars = upload_kwargs.get("serving_container_environment_variables", {})
-        assert env_vars["MODEL_ID"] == "meta-llama/Llama-3.3-8B-Instruct"
+        assert env_vars["MODEL_ID"] == "meta-llama/Llama-3.1-8B-Instruct"
         assert env_vars["HF_TOKEN"] == "hf_test_deploy"
 
     def test_cleanup_base_endpoint(self):
@@ -857,7 +857,7 @@ class TestExistingTestConfigCompat:
         from student_trainer import create_student_trainer, StudentTrainer
 
         config = {
-            "student": {"model_name_or_path": "meta-llama/Llama-3.3-8B-Instruct"},
+            "student": {"model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct"},
             "training": {"use_4bit": True, "learning_rate": 2e-4,
                          "num_train_epochs": 1},
             "lora": {"r": 8, "alpha": 16, "dropout": 0.05},
@@ -872,7 +872,7 @@ class TestExistingTestConfigCompat:
 
         base = {
             "teacher": {"provider": "openai", "model": "gpt-4o", "temperature": 0.7},
-            "student": {"model_name_or_path": "meta-llama/Llama-3.3-8B-Instruct"},
+            "student": {"model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct"},
             "training": {"use_4bit": True},
             "lora": {"r": 8, "alpha": 16, "dropout": 0.05},
         }

@@ -15,9 +15,9 @@
 # ------------------------------------------------------------------
 teacher:
   # Provider: openai | google | anthropic | mistral | together
-  provider: openai
+  provider: anthropic
   # Model identifier
-  model: gpt-4o
+  model: claude-sonnet-4-6
   # Leave blank to read from OPENAI_API_KEY / GOOGLE_API_KEY / etc.
   api_key: ""
   temperature: 0.7
@@ -27,7 +27,7 @@ teacher:
 # ------------------------------------------------------------------
 student:
   # HuggingFace model ID or local path
-  model_name_or_path: meta-llama/Llama-3.3-8B-Instruct
+  model_name_or_path: Qwen/Qwen2.5-7B-Instruct
   # Backend: "local" (GPU + PyTorch) or "vertex_ai" (Google Cloud)
   backend: vertex_ai
 

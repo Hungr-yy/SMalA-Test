@@ -215,7 +215,7 @@ class StudentTrainer:
         lora_cfg = cfg.get("lora", {})
 
         return cls(
-            model_name_or_path=student_cfg.get("model_name_or_path", "meta-llama/Llama-3.3-8B-Instruct"),
+            model_name_or_path=student_cfg.get("model_name_or_path", "meta-llama/Llama-3.1-8B-Instruct"),
             output_dir=cfg.get("output_dir", "outputs/student_adapter"),
             use_4bit=training_cfg.get("use_4bit", True),
             lora_r=lora_cfg.get("r", 16),
@@ -408,7 +408,7 @@ class VertexAIStudentTrainer:
 
     # Maps HuggingFace model IDs to Vertex AI model identifiers
     _VERTEX_MODEL_MAP = {
-        "meta-llama/Llama-3.3-8B-Instruct": "meta/llama-3.3-8b-instruct",
+        "meta-llama/Llama-3.1-8B-Instruct": "meta/llama-3.1-8b-instruct",
         "google/gemma-3-4b-it": "google/gemma-3-4b-it",
         "Qwen/Qwen2.5-7B-Instruct": "Qwen/Qwen2.5-7B-Instruct",
     }
@@ -453,7 +453,7 @@ class VertexAIStudentTrainer:
         lora_cfg = cfg.get("lora", {})
 
         return cls(
-            model_name_or_path=student_cfg.get("model_name_or_path", "meta-llama/Llama-3.3-8B-Instruct"),
+            model_name_or_path=student_cfg.get("model_name_or_path", "meta-llama/Llama-3.1-8B-Instruct"),
             project=vertex_cfg.get("project", "") or os.environ.get("VERTEX_AI_PROJECT", ""),
             location=vertex_cfg.get("location", "") or os.environ.get("VERTEX_AI_LOCATION", "asia-southeast1"),
             staging_bucket=vertex_cfg.get("staging_bucket", "") or os.environ.get("VERTEX_AI_STAGING_BUCKET", ""),
@@ -527,7 +527,7 @@ class VertexAIStudentTrainer:
         )
 
         # Build environment variables for the training container.
-        # HF_TOKEN is required for gated models (e.g. Llama 3.3 8B Instruct).
+        # HF_TOKEN is required for gated models (e.g. Llama 3.1 8B Instruct).
         env_vars = {}
         hf_token = os.environ.get("HF_TOKEN", "")
         if hf_token:

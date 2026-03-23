@@ -15,7 +15,7 @@ Teachers:
     T3 = Claude Sonnet 4.6 (Anthropic)
 
 Students:
-    S1 = Llama 3.3 8B Instruct       (Meta)
+    S1 = Llama 3.1 8B Instruct       (Meta)
     S2 = Gemma 3 4B                   (Google)
     S3 = Qwen 2.5 7B Instruct         (Alibaba / Qwen)
 
@@ -94,8 +94,8 @@ TEACHERS = [
 
 STUDENTS = [
     {
-        "name": "llama3.3_8b",
-        "model_name_or_path": "meta-llama/Llama-3.3-8B-Instruct",
+        "name": "llama3.1_8b",
+        "model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct",
     },
     {
         "name": "gemma3_4b",

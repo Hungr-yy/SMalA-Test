@@ -72,7 +72,7 @@ def _ok_result(label: str, output_dir: str = "/tmp/test") -> dict[str, Any]:
         "output_dir": output_dir,
         "status": "completed",
         "teacher": "openai/gpt-4o",
-        "student": "meta-llama/Llama-3.3-8B-Instruct",
+        "student": "meta-llama/Llama-3.1-8B-Instruct",
         "best_accuracy": 0.75,
         "final_proficiency": "7",
         "rounds_completed": 3,
@@ -96,7 +96,7 @@ def _make_base_config() -> dict[str, Any]:
     """Minimal base config for tests."""
     return {
         "teacher": {"provider": "openai", "model": "gpt-4o", "temperature": 0.7},
-        "student": {"model_name_or_path": "meta-llama/Llama-3.3-8B-Instruct"},
+        "student": {"model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct"},
         "training": {"use_4bit": True, "learning_rate": 2e-4, "num_train_epochs": 1,
                       "per_device_train_batch_size": 1, "gradient_accumulation_steps": 1,
                       "max_seq_length": 512},
@@ -659,7 +659,7 @@ class TestRetryLogic:
                 exp_dir = str(batch_dir / label)
                 Path(exp_dir).mkdir(parents=True, exist_ok=True)
                 # Make one experiment fail in initial batches, succeed in retries
-                if label == "gpt4o__llama3.3_8b" and "retry" not in batch_label:
+                if label == "gpt4o__llama3.1_8b" and "retry" not in batch_label:
                     results.append(_fail_result(label, "transient error", exp_dir))
                 else:
                     (Path(exp_dir) / "experiment_result.json").write_text("{}")
@@ -687,7 +687,7 @@ class TestRetryLogic:
         # After retry, the experiment should be completed
         tracker_path = tmp_path / "tracker.json"
         tracker_data = json.loads(tracker_path.read_text())
-        assert tracker_data["experiments"]["gpt4o__llama3.3_8b"]["status"] == "completed"
+        assert tracker_data["experiments"]["gpt4o__llama3.1_8b"]["status"] == "completed"
 
     def test_retry_capped_at_max_retries(self, tmp_path):
         """Retries stop after max_retries even if experiments still fail."""
@@ -705,7 +705,7 @@ class TestRetryLogic:
                 exp_dir = str(batch_dir / label)
                 Path(exp_dir).mkdir(parents=True, exist_ok=True)
                 # This experiment always fails
-                if label == "gpt4o__llama3.3_8b":
+                if label == "gpt4o__llama3.1_8b":
                     results.append(_fail_result(label, "permanent error", exp_dir))
                 else:
                     (Path(exp_dir) / "experiment_result.json").write_text("{}")
@@ -733,7 +733,7 @@ class TestRetryLogic:
 
         # Summary should list the permanently failed experiment
         summary = json.loads((tmp_path / "experiment_summary.json").read_text())
-        assert "gpt4o__llama3.3_8b" in summary["permanently_failed"]
+        assert "gpt4o__llama3.1_8b" in summary["permanently_failed"]
 
     def test_no_retry_when_all_succeed(self, tmp_path):
         """No retries happen if all experiments pass."""

@@ -6,14 +6,14 @@
 
 ## Overview
 
-SMalA implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Claude Sonnet 4.6) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3.3 8B Instruct, Gemma 3 4B, or Qwen 2.5 7B Instruct).
+SMalA implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Claude Sonnet 4.6) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3.1 8B Instruct, Gemma 3 4B, or Qwen 2.5 7B Instruct).
 
 ```
 Teacher LLM (GPT-4o / Gemini 2.5 Pro / Claude Sonnet 4.6)
        │
        ▼  1. Generate exam from malware detonation report
        │
-Student SLM (Llama 3.3 8B Instruct / Gemma 3 4B / Qwen 2.5 7B Instruct)
+Student SLM (Llama 3.1 8B Instruct / Gemma 3 4B / Qwen 2.5 7B Instruct)
        │
        ▼  2. Student attempts exam
        │
@@ -72,7 +72,7 @@ SMalA/
 | Teacher | OpenAI    | GPT-4o                                   |
 | Teacher | Google    | Gemini 2.5 Pro                           |
 | Teacher | Anthropic | Claude Sonnet 4.6                        |
-| Student | Meta      | Llama 3.3 8B Instruct                    |
+| Student | Meta      | Llama 3.1 8B Instruct                    |
 | Student | Google    | Gemma 3 4B                               |
 | Student | Qwen      | Qwen 2.5 7B Instruct                |
 
@@ -100,7 +100,7 @@ OPENAI_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Student SLM access (required for gated models: Llama 3.3, Gemma 3)
+# Student SLM access (required for gated models: Llama 3.1, Gemma 3)
 # Accept each model's license on its HuggingFace page first.
 # Not needed for Qwen 2.5 7B Instruct (open access).
 HF_TOKEN=hf_...
@@ -184,9 +184,9 @@ This runs all 9 teacher-student combinations across 3 sequential batches (3 expe
 
 | Batch | Experiment 1       | Experiment 2            | Experiment 3             |
 |-------|--------------------|-------------------------|--------------------------|
-| 1     | GPT-4o → Llama 3.3 | Gemini 2.5 Pro → Gemma 3 | Claude Sonnet 4.6 → Qwen 2.5 |
-| 2     | GPT-4o → Gemma 3   | Gemini 2.5 Pro → Qwen 2.5 | Claude Sonnet 4.6 → Llama 3.3 |
-| 3     | GPT-4o → Qwen 2.5  | Gemini 2.5 Pro → Llama 3.3 | Claude Sonnet 4.6 → Gemma 3 |
+| 1     | GPT-4o → Llama 3.1 | Gemini 2.5 Pro → Gemma 3 | Claude Sonnet 4.6 → Qwen 2.5 |
+| 2     | GPT-4o → Gemma 3   | Gemini 2.5 Pro → Qwen 2.5 | Claude Sonnet 4.6 → Llama 3.1 |
+| 3     | GPT-4o → Qwen 2.5  | Gemini 2.5 Pro → Llama 3.1 | Claude Sonnet 4.6 → Gemma 3 |
 
 Each experiment saves adapters and results to `outputs/batch_N/<teacher>__<student>/`. A summary comparison table is saved to `outputs/experiment_summary.json`.
 
