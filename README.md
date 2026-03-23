@@ -54,17 +54,16 @@ SMalA/
 
 ---
 
-## Supported Model Families
+## Selected Model Families
 
-| Role    | Provider  | Recommended Model                        |
+| Role    | Provider  | Model                                    |
 |---------|-----------|------------------------------------------|
-| Teacher | OpenAI    | GPT-4o, gpt-o3                           |
-| Teacher | Google    | Gemini 2.5 Pro, Gemini 1.5 Pro           |
-| Teacher | Alibaba   | Qwen-Max                                 |
-| Student | Meta      | Llama 3 8B                               |
-| Student | Microsoft | Phi-3                                    |
-| Student | Google    | Gemma 7B                                 |
-| Student | DeepSeek  | DeepSeek-R1-Distill-Qwen-7B              |
+| Teacher | OpenAI    | GPT-4o                                   |
+| Teacher | Google    | Gemini 2.5 Pro                           |
+| Teacher | Anthropic | Claude Sonnet 4.6                        |
+| Student | Meta      | Llama 3.3 8B Instruct                    |
+| Student | Google    | Gemma 3 4B                               |
+| Student | Alibaba   | Qwen2.5-Coder-3B-Instruct                |
 
 ---
 
