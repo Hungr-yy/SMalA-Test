@@ -14,7 +14,7 @@
 # Teacher LLM
 # ------------------------------------------------------------------
 teacher:
-  # Provider: openai | google | anthropic | qwen | together
+  # Provider: openai | google | anthropic | mistral | together
   provider: openai
   # Model identifier
   model: gpt-4o
@@ -28,6 +28,20 @@ teacher:
 student:
   # HuggingFace model ID or local path
   model_name_or_path: meta-llama/Llama-3.3-8B-Instruct
+  # Backend: "local" (GPU + PyTorch) or "vertex_ai" (Google Cloud)
+  backend: vertex_ai
+
+# ------------------------------------------------------------------
+# Google Vertex AI (required when student.backend = "vertex_ai")
+# ------------------------------------------------------------------
+vertex_ai:
+  # GCP project ID
+  project: ""
+  # GCP region
+  location: us-central1
+  # GCS bucket for staging training data and adapter checkpoints
+  # e.g. gs://my-bucket/smala
+  staging_bucket: ""
 
 # ------------------------------------------------------------------
 # Data source (Hybrid Analysis reports + task definitions)
@@ -37,8 +51,6 @@ data_source:
   task_definitions: prompt_templates/malware_analysis_task.json
   # Path to directory containing Hybrid Analysis detonation reports
   hybrid_analysis_dir: hybrid-analysis
-  # Number of reports sampled per round (balanced across families)
-  reports_per_round: 10
 
 # ------------------------------------------------------------------
 # Output
@@ -50,6 +62,7 @@ output_dir: outputs/student_adapter
 # ------------------------------------------------------------------
 training:
   # Set to true for QLoRA (4-bit quantisation) – reduces VRAM significantly
+  # (only used by local backend; Vertex AI manages its own quantisation)
   use_4bit: true
   learning_rate: 0.0002
   num_train_epochs: 3

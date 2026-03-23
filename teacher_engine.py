@@ -2,7 +2,7 @@
 teacher_engine.py
 =================
 Interacts with a high-capability "teacher" LLM (OpenAI GPT-4o, Google Gemini,
-or Alibaba Qwen) to drive the NVIDIA-inspired data flywheel distillation loop:
+or Mistral) to drive the NVIDIA-inspired data flywheel distillation loop:
 
   1. Exam Generation   – create exam questions from malware reports, informed by
                           prior proficiency and feedback (EXAM_PROMPT template)
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Provider registry
 # ---------------------------------------------------------------------------
-SUPPORTED_PROVIDERS = ("openai", "google", "anthropic", "qwen", "together")
+SUPPORTED_PROVIDERS = ("openai", "google", "anthropic", "mistral", "together")
 
 
 def _build_openai_client(api_key: str):
@@ -49,6 +49,12 @@ def _build_anthropic_client(api_key: str):
     from anthropic import Anthropic  # type: ignore
 
     return Anthropic(api_key=api_key)
+
+
+def _build_mistral_client(api_key: str):
+    from openai import OpenAI  # type: ignore
+
+    return OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
 
 
 def _build_together_client(api_key: str):
@@ -102,9 +108,9 @@ class TeacherEngine:
     Parameters
     ----------
     provider:
-        One of ``"openai"``, ``"google"``, ``"qwen"``, or ``"together"``.
+        One of ``"openai"``, ``"google"``, ``"anthropic"``, ``"mistral"``, or ``"together"``.
     model:
-        Model identifier, e.g. ``"gpt-4o"``, ``"gemini-2.5-pro"``, ``"qwen-max"``.
+        Model identifier, e.g. ``"gpt-4o"``, ``"gemini-2.5-pro"``, ``"mistral-large-latest"``.
     api_key:
         API key for the chosen provider.  Defaults to the corresponding
         ``*_API_KEY`` environment variable when not supplied.
@@ -138,7 +144,7 @@ class TeacherEngine:
                 "openai": "OPENAI_API_KEY",
                 "google": "GOOGLE_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
-                "qwen": "QWEN_API_KEY",
+                "mistral": "MISTRAL_API_KEY",
                 "together": "TOGETHER_API_KEY",
             }
             api_key = os.environ.get(env_map[provider], "")
@@ -150,7 +156,9 @@ class TeacherEngine:
             self._google_model = self._client.GenerativeModel(model)
         elif provider == "anthropic":
             self._client = _build_anthropic_client(api_key)
-        elif provider in ("qwen", "together"):
+        elif provider == "mistral":
+            self._client = _build_mistral_client(api_key)
+        elif provider == "together":
             self._client = _build_together_client(api_key)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
@@ -197,7 +205,7 @@ class TeacherEngine:
             )
             return response.content[0].text
 
-        # OpenAI-compatible path (openai / together / qwen)
+        # OpenAI-compatible path (openai / mistral / together)
         response = self._client.chat.completions.create(
             model=self.model,
             temperature=self.temperature,
@@ -212,30 +220,28 @@ class TeacherEngine:
     def generate_exam(
         self,
         task_description: str,
-        data_source: str,
+        reports: list[dict[str, Any]],
         proficiency: str = "N/A",
         feedback: str = "N/A",
-        num_questions: int = 5,
     ) -> list[dict[str, Any]]:
-        """Generate exam questions using the EXAM_PROMPT template.
+        """Generate exam questions — one question per detonation report.
 
-        The template incorporates prior proficiency and feedback so that
-        the teacher adjusts difficulty and focus areas each round (the
-        NVIDIA data flywheel approach).
+        Follows the CyberSOCEval one-report-per-question paradigm: each
+        report is sent individually to the teacher, which generates exactly
+        one question grounded in that report.  The template incorporates
+        prior proficiency and feedback (NVIDIA data flywheel).
 
         Parameters
         ----------
         task_description:
             Description of the malware analysis task (from malware_analysis_task.json).
-        data_source:
-            JSON string of filtered Hybrid Analysis detonation reports for the
-            teacher to ground questions in.
+        reports:
+            List of filtered Hybrid Analysis report dicts.  One question
+            will be generated per report.
         proficiency:
             Proficiency score from the previous round (1-10 or "N/A").
         feedback:
             Teacher feedback from the previous round identifying weaknesses.
-        num_questions:
-            How many exam questions to generate.
 
         Returns
         -------
@@ -243,21 +249,30 @@ class TeacherEngine:
             A list of exam item dicts, each with ``question`` and ``answer`` keys.
         """
         template = load_template("EXAM_PROMPT", self.templates_dir)
-        prompt = template % (
-            task_description,
-            data_source,
-            proficiency,
-            feedback,
-            num_questions,
-        )
+        exam: list[dict[str, Any]] = []
 
-        raw = self._complete(prompt)
-        parsed = self._parse_json(raw, default={"exam": []})
+        for i, report in enumerate(reports):
+            report_json = json.dumps(report)
+            prompt = template % (
+                task_description,
+                report_json,
+                proficiency,
+                feedback,
+            )
 
-        # The template returns {"exam": [...]}, extract the list
-        if isinstance(parsed, dict):
-            return parsed.get("exam", [])
-        return parsed
+            raw = self._complete(prompt)
+            parsed = self._parse_json(raw, default={})
+
+            # The template returns {"question": {...}, "answer": {...}}
+            if isinstance(parsed, dict) and "question" in parsed:
+                exam.append(parsed)
+                logger.debug("Generated question %d/%d", i + 1, len(reports))
+            else:
+                logger.warning(
+                    "Teacher returned invalid question for report %d; skipping", i + 1
+                )
+
+        return exam
 
     # ------------------------------------------------------------------
     # Steps 3+4 – Evaluation + Curriculum Generation (combined)

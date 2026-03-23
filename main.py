@@ -118,16 +118,23 @@ def load_hybrid_analysis_reports(
     return reports
 
 
-def sample_data_source(
+def sample_reports(
     reports: list[dict[str, Any]],
-    num_reports: int = 10,
-) -> str:
-    """Sample a diverse batch of reports and return as a JSON string.
+    num_reports: int = 5,
+) -> list[dict[str, Any]]:
+    """Sample a diverse set of individual reports for one-report-per-question.
 
-    Samples evenly across malware families for diversity.
+    Follows the CyberSOCEval paradigm: each question is grounded in exactly
+    one detonation report.  Returns ``num_reports`` individual report dicts,
+    sampled evenly across malware families.
+
+    Reports are pre-filtered by :class:`data_filter.DataFilter` using the
+    CyberSOCEval truncation (hash removal, description trimming, MITRE
+    condensing), guaranteeing every report is under ~20k tokens and fits
+    within all teacher context windows.
     """
     if not reports:
-        return "[]"
+        return []
 
     # Group by family
     by_family: dict[str, list[dict[str, Any]]] = {}
@@ -141,13 +148,15 @@ def sample_data_source(
     for family_reports in by_family.values():
         sampled.extend(random.sample(family_reports, min(per_family, len(family_reports))))
 
-    # If we need more to reach num_reports, sample from remainder
+    # Fill to num_reports if needed
     remaining = [r for r in reports if r not in sampled]
     if len(sampled) < num_reports and remaining:
         extra = min(num_reports - len(sampled), len(remaining))
         sampled.extend(random.sample(remaining, extra))
 
-    return json.dumps(sampled[:num_reports], indent=2)
+    selected = sampled[:num_reports]
+    logger.debug("Sampled %d reports across %d families", len(selected), len(by_family))
+    return selected
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +195,7 @@ def run_distillation_loop(
         ``rounds_completed``, ``round_results`` (list of per-round metrics).
     """
     from teacher_engine import TeacherEngine, load_template
-    from student_trainer import StudentTrainer
+    from student_trainer import create_student_trainer, StudentTrainer
 
     # ------------------------------------------------------------------
     # Initialise teacher
@@ -202,28 +211,16 @@ def run_distillation_loop(
     logger.info("Teacher: %s", teacher_name)
 
     # ------------------------------------------------------------------
-    # Initialise student
+    # Initialise student (local or Vertex AI backend)
     # ------------------------------------------------------------------
     if "_config_path" in config:
-        student = StudentTrainer.from_config(config["_config_path"])
+        cfg_from_file = load_config(config["_config_path"])
+        cfg_from_file["output_dir"] = output_dir
+        student = create_student_trainer(cfg_from_file)
     else:
         # Programmatic construction (used by run_experiments.py)
-        student_cfg = config.get("student", {})
-        training_cfg = config.get("training", {})
-        lora_cfg = config.get("lora", {})
-        student = StudentTrainer(
-            model_name_or_path=student_cfg["model_name_or_path"],
-            output_dir=output_dir,
-            use_4bit=training_cfg.get("use_4bit", True),
-            lora_r=lora_cfg.get("r", 16),
-            lora_alpha=lora_cfg.get("alpha", 32),
-            lora_dropout=lora_cfg.get("dropout", 0.05),
-            learning_rate=training_cfg.get("learning_rate", 2e-4),
-            num_train_epochs=training_cfg.get("num_train_epochs", 3),
-            per_device_train_batch_size=training_cfg.get("per_device_train_batch_size", 4),
-            gradient_accumulation_steps=training_cfg.get("gradient_accumulation_steps", 4),
-            max_seq_length=training_cfg.get("max_seq_length", 2048),
-        )
+        config["output_dir"] = output_dir
+        student = create_student_trainer(config)
 
     student_name = config.get("student", {}).get("model_name_or_path", "unknown")
     logger.info("Student: %s", student_name)
@@ -236,7 +233,6 @@ def run_distillation_loop(
         "task_definitions", "prompt_templates/malware_analysis_task.json"
     )
     data_dir = data_cfg.get("hybrid_analysis_dir", "hybrid-analysis")
-    reports_per_round = data_cfg.get("reports_per_round", 10)
 
     task_description = load_task_description(task_path)
     logger.info("Loaded task definitions from %s", task_path)
@@ -267,18 +263,18 @@ def run_distillation_loop(
         round_dir = Path(output_dir) / f"round_{round_num}"
         round_dir.mkdir(parents=True, exist_ok=True)
 
-        # Sample diverse reports for this round
-        data_source = sample_data_source(all_reports, num_reports=reports_per_round)
-
-        # Step 1 – Generate exam (informed by prior proficiency & feedback)
-        logger.info("[Step 1] Generating exam (proficiency=%s) …", proficiency)
+        # Sample one report per question (CyberSOCEval paradigm)
         num_q = config.get("exam", {}).get("num_questions", 5)
+        round_reports = sample_reports(all_reports, num_reports=num_q)
+
+        # Step 1 – Generate exam: one question per report
+        logger.info("[Step 1] Generating %d questions (1 per report, proficiency=%s) …",
+                     num_q, proficiency)
         exam = teacher.generate_exam(
             task_description=task_description,
-            data_source=data_source,
+            reports=round_reports,
             proficiency=proficiency,
             feedback=feedback,
-            num_questions=num_q,
         )
         if not exam:
             logger.error("Teacher returned no exam questions; skipping round.")
@@ -318,10 +314,12 @@ def run_distillation_loop(
         # Step 3+4 – Teacher evaluates and generates curriculum
         logger.info("[Step 3] Teacher evaluating + generating curriculum …")
         num_examples = config.get("curriculum", {}).get("num_examples", 100)
+        # Pass round reports as data_source for remediation example generation
+        data_source_for_eval = json.dumps(round_reports)
         evaluation = teacher.evaluate_and_generate_curriculum(
             task_description=task_description,
             exam_results=exam_results,
-            data_source=data_source,
+            data_source=data_source_for_eval,
             num_examples=num_examples,
         )
 

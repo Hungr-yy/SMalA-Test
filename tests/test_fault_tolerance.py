@@ -433,9 +433,11 @@ class TestSpecificFailures:
 
         with mock.patch.object(engine, "_complete", return_value="not json at all {{{"):
             result = engine.generate_exam(
-                task_description="test", data_source="[]", num_questions=2,
+                task_description="test",
+                reports=[{"sha256": "abc", "verdict": "malicious"}],
             )
 
+        # Should return empty list (skipped invalid response) rather than crashing
         assert result == []
 
     def test_teacher_retry_on_transient_error(self):

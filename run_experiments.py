@@ -17,7 +17,7 @@ Teachers:
 Students:
     S1 = Llama 3.3 8B Instruct       (Meta)
     S2 = Gemma 3 4B                   (Google)
-    S3 = Qwen2.5-Coder-3B-Instruct   (Alibaba)
+    S3 = Mistral-7B-Instruct          (Mistral AI)
 
 Each experiment saves its adapters and results under:
     outputs/<batch_N>/<teacher_short>_<student_short>/
@@ -102,8 +102,8 @@ STUDENTS = [
         "model_name_or_path": "google/gemma-3-4b-it",
     },
     {
-        "name": "qwen2.5_coder_3b",
-        "model_name_or_path": "Qwen/Qwen2.5-Coder-3B-Instruct",
+        "name": "mistral_7b",
+        "model_name_or_path": "mistralai/Mistral-7B-Instruct-v0.3",
     },
 ]
 
@@ -228,9 +228,10 @@ class ExperimentTracker:
             if not result_path.exists():
                 issues.append("missing experiment_result.json")
 
-            # Check best_adapter exists
+            # Check adapter checkpoint exists (local or Vertex AI)
             best_adapter = output_dir / "best_adapter"
-            if not best_adapter.exists():
+            vertex_meta = output_dir / "vertex_ai_metadata.json"
+            if not best_adapter.exists() and not vertex_meta.exists():
                 # Also check if any round adapter exists
                 has_any_adapter = any(
                     (output_dir / f"round_{i}" / "adapter").exists()

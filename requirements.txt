@@ -14,6 +14,10 @@ openai>=1.25.0
 google-generativeai>=0.5.0
 anthropic>=0.39.0
 
+# Google Cloud (Vertex AI student backend)
+google-cloud-aiplatform>=1.50.0
+google-cloud-storage>=2.16.0
+
 # Data processing
 numpy>=1.26.0
 scipy>=1.13.0

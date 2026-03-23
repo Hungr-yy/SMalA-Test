@@ -1,22 +1,31 @@
 """
 student_trainer.py
 ==================
-Fine-tunes a Small Language Model (SLM) on a curriculum produced by the teacher
-using Parameter-Efficient Fine-Tuning (PEFT) – specifically LoRA or QLoRA –
-to minimise GPU memory requirements.
+Fine-tunes a Small Language Model (SLM) on a curriculum produced by the teacher.
+
+Supports two backends:
+  - ``"local"``    – PyTorch + PEFT LoRA/QLoRA on a local GPU
+  - ``"vertex_ai"`` – Google Vertex AI open-model tuning (cloud-based)
+
+Both backends expose the same interface: ``train()``, ``generate()``, ``save()``.
+The backend is selected via ``student.backend`` in the config YAML.
 
 Typical usage
 -------------
->>> from student_trainer import StudentTrainer
->>> trainer = StudentTrainer.from_config("configs/model_config.yaml")
+>>> from student_trainer import create_student_trainer
+>>> trainer = create_student_trainer(config)
 >>> trainer.train(curriculum_dataset)
 >>> trainer.save("outputs/student_adapter")
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import tempfile
+import time
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -46,23 +55,15 @@ def _build_dataset(examples: list[dict[str, Any]]):
     records = []
     for ex in examples:
         if "question" in ex and "answer" in ex:
-            # EXAM_EVALUATION format: question/answer pairs
             text = _format_qa_example(ex)
         else:
-            # Legacy instruction/input/output format
             text = _format_instruction_example(ex)
         records.append({"text": text})
     return Dataset.from_list(records)
 
 
 def _format_qa_example(ex: dict[str, Any]) -> str:
-    """Format a question/answer pair as training text.
-
-    Uses the TASK_PROMPT structure so the student learns to answer
-    in the same format used during exam evaluation.
-    """
-    import json
-
+    """Format a question/answer pair as training text."""
     question_data = ex["question"]
     answer_data = ex["answer"]
 
@@ -98,12 +99,48 @@ def _format_instruction_example(ex: dict[str, Any]) -> str:
     )
 
 
+def _curriculum_to_jsonl(examples: list[dict[str, Any]]) -> str:
+    """Convert curriculum examples to JSONL format for Vertex AI tuning."""
+    lines = []
+    for ex in examples:
+        if "question" in ex and "answer" in ex:
+            text = _format_qa_example(ex)
+        else:
+            text = _format_instruction_example(ex)
+        # Vertex AI expects {"input_text": ..., "output_text": ...} or
+        # {"text_input": ..., "output": ...} depending on the model.
+        # Use the generic text format for open model tuning.
+        lines.append(json.dumps({"input_text": text}))
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
-# StudentTrainer
+# Factory
+# ---------------------------------------------------------------------------
+
+def create_student_trainer(config: dict[str, Any]) -> "StudentTrainer":
+    """Create the appropriate student trainer based on config.
+
+    Parameters
+    ----------
+    config:
+        Full config dict.  ``config["student"]["backend"]`` selects the
+        backend (``"local"`` or ``"vertex_ai"``).  Defaults to ``"local"``.
+    """
+    student_cfg = config.get("student", {})
+    backend = student_cfg.get("backend", "local")
+
+    if backend == "vertex_ai":
+        return VertexAIStudentTrainer.from_dict(config)
+    return StudentTrainer.from_dict(config)
+
+
+# ---------------------------------------------------------------------------
+# StudentTrainer (local backend)
 # ---------------------------------------------------------------------------
 
 class StudentTrainer:
-    """Fine-tunes an SLM with LoRA or QLoRA.
+    """Fine-tunes an SLM locally with LoRA or QLoRA.
 
     Parameters
     ----------
@@ -168,6 +205,11 @@ class StudentTrainer:
     def from_config(cls, config_path: str) -> "StudentTrainer":
         """Construct a :class:`StudentTrainer` from a YAML config file."""
         cfg = _load_yaml(config_path)
+        return cls.from_dict(cfg)
+
+    @classmethod
+    def from_dict(cls, cfg: dict[str, Any]) -> "StudentTrainer":
+        """Construct a :class:`StudentTrainer` from a config dict."""
         student_cfg = cfg.get("student", {})
         training_cfg = cfg.get("training", {})
         lora_cfg = cfg.get("lora", {})
@@ -250,14 +292,7 @@ class StudentTrainer:
     # ------------------------------------------------------------------
 
     def train(self, curriculum: list[dict[str, Any]]) -> None:
-        """Fine-tune the student SLM on *curriculum*.
-
-        Parameters
-        ----------
-        curriculum:
-            List of ``{"instruction", "input", "output"}`` dicts as produced
-            by :meth:`teacher_engine.TeacherEngine.generate_curriculum`.
-        """
+        """Fine-tune the student SLM on *curriculum*."""
         from trl import SFTTrainer  # type: ignore
         from transformers import TrainingArguments
 
@@ -299,20 +334,7 @@ class StudentTrainer:
     # ------------------------------------------------------------------
 
     def generate(self, prompt: str, max_new_tokens: int = 512) -> str:
-        """Run inference with the (possibly fine-tuned) student model.
-
-        Parameters
-        ----------
-        prompt:
-            Input text / instruction.
-        max_new_tokens:
-            Maximum tokens to generate.
-
-        Returns
-        -------
-        str
-            The model's response text.
-        """
+        """Run inference with the (possibly fine-tuned) student model."""
         import torch
 
         if self._model is None:
@@ -333,13 +355,7 @@ class StudentTrainer:
     # ------------------------------------------------------------------
 
     def save(self, path: str | None = None) -> None:
-        """Save the LoRA adapter weights.
-
-        Parameters
-        ----------
-        path:
-            Directory to save to; defaults to :attr:`output_dir`.
-        """
+        """Save the LoRA adapter weights."""
         save_path = path or self.output_dir
         os.makedirs(save_path, exist_ok=True)
         if self._model is not None:
@@ -349,16 +365,310 @@ class StudentTrainer:
             self._tokenizer.save_pretrained(save_path)
 
     def load_adapter(self, adapter_path: str) -> None:
-        """Load a previously saved LoRA adapter on top of the base model.
-
-        Parameters
-        ----------
-        adapter_path:
-            Directory containing the PEFT adapter files.
-        """
+        """Load a previously saved LoRA adapter on top of the base model."""
         from peft import PeftModel  # type: ignore
 
         if self._model is None:
             self._load_model_and_tokenizer()
         self._model = PeftModel.from_pretrained(self._model, adapter_path)
         logger.info("Adapter loaded from %s", adapter_path)
+
+
+# ---------------------------------------------------------------------------
+# VertexAIStudentTrainer (cloud backend)
+# ---------------------------------------------------------------------------
+
+class VertexAIStudentTrainer:
+    """Fine-tunes an SLM via Google Vertex AI open-model tuning.
+
+    Workflow per training round:
+      1. Convert curriculum to JSONL
+      2. Upload to GCS staging bucket
+      3. Launch a Vertex AI supervised tuning job (LoRA / PEFT_ADAPTER)
+      4. Poll until the job completes
+      5. Download the adapter weights from GCS to local output_dir
+
+    For inference, uses the Vertex AI prediction endpoint of the
+    tuned model, falling back to the base model if no tuned version exists.
+
+    Parameters
+    ----------
+    model_name_or_path:
+        HuggingFace model id used as the base for tuning.
+    project:
+        GCP project ID.
+    location:
+        GCP region (e.g. ``"us-central1"``).
+    staging_bucket:
+        GCS bucket URI for staging training data and adapters
+        (e.g. ``"gs://my-bucket/smala"``).
+    output_dir:
+        Local directory for downloading adapter checkpoints.
+    """
+
+    # Maps HuggingFace model IDs to Vertex AI model identifiers
+    _VERTEX_MODEL_MAP = {
+        "meta-llama/Llama-3.3-8B-Instruct": "meta/llama-3.3-8b-instruct",
+        "google/gemma-3-4b-it": "google/gemma-3-4b-it",
+        "mistralai/Mistral-7B-Instruct-v0.3": "mistralai/mistral-7b-instruct-v0.3",
+    }
+
+    def __init__(
+        self,
+        model_name_or_path: str,
+        project: str,
+        location: str,
+        staging_bucket: str,
+        output_dir: str = "outputs/student_adapter",
+        learning_rate: float = 2e-4,
+        num_train_epochs: int = 3,
+        lora_r: int = 16,
+    ) -> None:
+        self.model_name_or_path = model_name_or_path
+        self.project = project
+        self.location = location
+        self.staging_bucket = staging_bucket.rstrip("/")
+        self.output_dir = output_dir
+        self.learning_rate = learning_rate
+        self.num_train_epochs = num_train_epochs
+        self.lora_r = lora_r
+
+        self._tuned_endpoint = None
+        self._tuning_job_count = 0
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_dict(cls, cfg: dict[str, Any]) -> "VertexAIStudentTrainer":
+        """Construct from a config dict."""
+        student_cfg = cfg.get("student", {})
+        vertex_cfg = cfg.get("vertex_ai", {})
+        training_cfg = cfg.get("training", {})
+        lora_cfg = cfg.get("lora", {})
+
+        return cls(
+            model_name_or_path=student_cfg.get("model_name_or_path", "meta-llama/Llama-3.3-8B-Instruct"),
+            project=vertex_cfg.get("project", ""),
+            location=vertex_cfg.get("location", "us-central1"),
+            staging_bucket=vertex_cfg.get("staging_bucket", ""),
+            output_dir=cfg.get("output_dir", "outputs/student_adapter"),
+            learning_rate=training_cfg.get("learning_rate", 2e-4),
+            num_train_epochs=training_cfg.get("num_train_epochs", 3),
+            lora_r=lora_cfg.get("r", 16),
+        )
+
+    # ------------------------------------------------------------------
+    # Training (Vertex AI)
+    # ------------------------------------------------------------------
+
+    def train(self, curriculum: list[dict[str, Any]]) -> None:
+        """Fine-tune via Vertex AI open-model tuning.
+
+        1. Converts curriculum to JSONL and uploads to GCS.
+        2. Creates a Vertex AI supervised tuning job with PEFT_ADAPTER mode.
+        3. Polls until the job completes.
+        4. Downloads the adapter to :attr:`output_dir`.
+        """
+        from google.cloud import aiplatform, storage
+
+        if not curriculum:
+            raise ValueError("curriculum must contain at least one example")
+
+        if not self.project or not self.staging_bucket:
+            raise ValueError(
+                "vertex_ai.project and vertex_ai.staging_bucket must be set "
+                "in the config for Vertex AI backend"
+            )
+
+        aiplatform.init(project=self.project, location=self.location)
+        self._tuning_job_count += 1
+
+        # --- Step 1: Upload training data to GCS ---
+        jsonl_data = _curriculum_to_jsonl(curriculum)
+        gcs_train_path = (
+            f"{self.staging_bucket}/training_data/"
+            f"curriculum_{self._tuning_job_count}.jsonl"
+        )
+        self._upload_to_gcs(gcs_train_path, jsonl_data)
+        logger.info("Uploaded %d training examples to %s", len(curriculum), gcs_train_path)
+
+        # --- Step 2: Create tuning job ---
+        vertex_model_id = self._VERTEX_MODEL_MAP.get(
+            self.model_name_or_path, self.model_name_or_path
+        )
+        display_name = (
+            f"smala-{vertex_model_id.split('/')[-1]}-"
+            f"round{self._tuning_job_count}"
+        )
+
+        logger.info(
+            "Creating Vertex AI tuning job: model=%s, epochs=%d, lora_rank=%d",
+            vertex_model_id, self.num_train_epochs, self.lora_r,
+        )
+
+        tuning_job = aiplatform.CustomTrainingJob(
+            display_name=display_name,
+            container_uri=(
+                "us-docker.pkg.dev/vertex-ai/"
+                "vertex-vision-model-garden-dockers/"
+                "pytorch-peft-train:latest"
+            ),
+            model_serving_container_image_uri=(
+                "us-docker.pkg.dev/vertex-ai/"
+                "vertex-vision-model-garden-dockers/"
+                "pytorch-peft-serve:latest"
+            ),
+        )
+
+        # Launch the training job
+        model = tuning_job.run(
+            args=[
+                f"--model_id={self.model_name_or_path}",
+                f"--dataset_path={gcs_train_path}",
+                f"--output_dir={self.staging_bucket}/adapters/{display_name}",
+                f"--lora_rank={self.lora_r}",
+                f"--epochs={self.num_train_epochs}",
+                f"--learning_rate={self.learning_rate}",
+            ],
+            replica_count=1,
+            machine_type="n1-standard-8",
+            accelerator_type="NVIDIA_L4",
+            accelerator_count=1,
+            model_display_name=display_name,
+        )
+
+        logger.info("Tuning job complete: %s", model.resource_name)
+
+        # --- Step 3: Download adapter to local directory ---
+        adapter_gcs_path = f"{self.staging_bucket}/adapters/{display_name}"
+        local_adapter_path = str(Path(self.output_dir) / "adapter")
+        self._download_from_gcs(adapter_gcs_path, local_adapter_path)
+        logger.info("Adapter downloaded to %s", local_adapter_path)
+
+        # Store the model resource for inference
+        self._tuned_endpoint = model
+
+    # ------------------------------------------------------------------
+    # Inference (Vertex AI)
+    # ------------------------------------------------------------------
+
+    def generate(self, prompt: str, max_new_tokens: int = 512) -> str:
+        """Run inference via Vertex AI prediction endpoint.
+
+        If no tuned model has been deployed yet (first round), falls back
+        to the base model via the Vertex AI Model Garden.
+        """
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=self.project, location=self.location)
+
+        if self._tuned_endpoint is not None:
+            # Use the fine-tuned model endpoint
+            try:
+                endpoint = self._tuned_endpoint.deploy(
+                    machine_type="n1-standard-4",
+                    accelerator_type="NVIDIA_L4",
+                    accelerator_count=1,
+                )
+                response = endpoint.predict(
+                    instances=[{"prompt": prompt, "max_tokens": max_new_tokens}]
+                )
+                endpoint.undeploy_all()
+                return response.predictions[0].get("generated_text", "")
+            except Exception as exc:
+                logger.warning("Tuned endpoint inference failed, falling back to base: %s", exc)
+
+        # Fallback: use the base model via Vertex AI GenerativeModel
+        try:
+            import vertexai
+            from vertexai.generative_models import GenerativeModel
+
+            vertexai.init(project=self.project, location=self.location)
+            vertex_model_id = self._VERTEX_MODEL_MAP.get(
+                self.model_name_or_path, self.model_name_or_path
+            )
+            model = GenerativeModel(vertex_model_id)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as exc:
+            logger.warning("Vertex AI base model inference failed: %s", exc)
+            return ""
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def save(self, path: str | None = None) -> None:
+        """Save adapter metadata locally.
+
+        The actual adapter weights are already downloaded from GCS
+        during :meth:`train`.  This writes a metadata file linking
+        the local path to the GCS source.
+        """
+        save_path = path or self.output_dir
+        os.makedirs(save_path, exist_ok=True)
+
+        metadata = {
+            "backend": "vertex_ai",
+            "model_name_or_path": self.model_name_or_path,
+            "project": self.project,
+            "location": self.location,
+            "staging_bucket": self.staging_bucket,
+            "tuning_jobs_completed": self._tuning_job_count,
+        }
+        with open(os.path.join(save_path, "vertex_ai_metadata.json"), "w") as fh:
+            json.dump(metadata, fh, indent=2)
+        logger.info("Vertex AI metadata saved to %s", save_path)
+
+    def load_adapter(self, adapter_path: str) -> None:
+        """Load adapter metadata (Vertex AI adapters are managed in the cloud)."""
+        meta_path = os.path.join(adapter_path, "vertex_ai_metadata.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as fh:
+                metadata = json.load(fh)
+            logger.info("Loaded Vertex AI metadata from %s", meta_path)
+
+    # ------------------------------------------------------------------
+    # GCS helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _upload_to_gcs(gcs_uri: str, data: str) -> None:
+        """Upload a string to a GCS URI (gs://bucket/path)."""
+        from google.cloud import storage
+
+        # Parse gs://bucket/path
+        parts = gcs_uri.replace("gs://", "").split("/", 1)
+        bucket_name = parts[0]
+        blob_path = parts[1] if len(parts) > 1 else ""
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        blob.upload_from_string(data)
+
+    @staticmethod
+    def _download_from_gcs(gcs_prefix: str, local_dir: str) -> None:
+        """Download all files under a GCS prefix to a local directory."""
+        from google.cloud import storage
+
+        parts = gcs_prefix.replace("gs://", "").split("/", 1)
+        bucket_name = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+
+        os.makedirs(local_dir, exist_ok=True)
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+
+        blobs = bucket.list_blobs(prefix=prefix)
+        for blob in blobs:
+            # Preserve relative path structure
+            relative_path = blob.name[len(prefix):].lstrip("/")
+            if not relative_path:
+                continue
+            local_path = os.path.join(local_dir, relative_path)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            blob.download_to_filename(local_path)
+            logger.debug("Downloaded %s → %s", blob.name, local_path)

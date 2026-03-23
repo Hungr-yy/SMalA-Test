@@ -6,14 +6,14 @@
 
 ## Overview
 
-SMalA implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Claude Sonnet 4.6) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3.3 8B Instruct, Gemma 3 4B, or Qwen2.5-Coder-3B-Instruct).
+SMalA implements an automated, iterative **teacher-student knowledge distillation** pipeline that trains a lightweight SLM to reverse engineer malware. A powerful "teacher" LLM (e.g., GPT-4o, Gemini 2.5 Pro, or Claude Sonnet 4.6) generates exams, evaluates student responses, and produces a tailored synthetic curriculum that is used to fine-tune a compact "student" SLM (e.g., Llama 3.3 8B Instruct, Gemma 3 4B, or Mistral-7B-Instruct).
 
 ```
 Teacher LLM (GPT-4o / Gemini 2.5 Pro / Claude Sonnet 4.6)
        │
        ▼  1. Generate exam from malware detonation report
        │
-Student SLM (Llama 3.3 8B Instruct / Gemma 3 4B / Qwen2.5-Coder-3B-Instruct)
+Student SLM (Llama 3.3 8B Instruct / Gemma 3 4B / Mistral-7B-Instruct)
        │
        ▼  2. Student attempts exam
        │
@@ -71,7 +71,7 @@ SMalA/
 | Teacher | Anthropic | Claude Sonnet 4.6                        |
 | Student | Meta      | Llama 3.3 8B Instruct                    |
 | Student | Google    | Gemma 3 4B                               |
-| Student | Alibaba   | Qwen2.5-Coder-3B-Instruct                |
+| Student | Mistral AI | Mistral-7B-Instruct                     |
 
 ---
 
@@ -119,9 +119,9 @@ This runs all 9 teacher-student combinations across 3 sequential batches (3 expe
 
 | Batch | Experiment 1       | Experiment 2            | Experiment 3             |
 |-------|--------------------|-------------------------|--------------------------|
-| 1     | GPT-4o → Llama 3.3 | Gemini 2.5 Pro → Gemma 3 | Claude Sonnet 4.6 → Qwen2.5 |
-| 2     | GPT-4o → Gemma 3   | Gemini 2.5 Pro → Qwen2.5 | Claude Sonnet 4.6 → Llama 3.3 |
-| 3     | GPT-4o → Qwen2.5   | Gemini 2.5 Pro → Llama 3.3 | Claude Sonnet 4.6 → Gemma 3 |
+| 1     | GPT-4o → Llama 3.3 | Gemini 2.5 Pro → Gemma 3 | Claude Sonnet 4.6 → Mistral |
+| 2     | GPT-4o → Gemma 3   | Gemini 2.5 Pro → Mistral | Claude Sonnet 4.6 → Llama 3.3 |
+| 3     | GPT-4o → Mistral   | Gemini 2.5 Pro → Llama 3.3 | Claude Sonnet 4.6 → Gemma 3 |
 
 Each experiment saves adapters and results to `outputs/batch_N/<teacher>__<student>/`. A summary comparison table is saved to `outputs/experiment_summary.json`.
 
@@ -166,9 +166,36 @@ python3 -m CybersecurityBenchmarks.benchmark.run \
 
 ---
 
+## Student Fine-Tuning Backends
+
+SMalA supports two backends for student model fine-tuning:
+
+| Backend | Config value | Infrastructure | Best for |
+|---------|-------------|----------------|----------|
+| **Local** | `backend: local` | Local GPU with PyTorch + PEFT | Development, single experiments |
+| **Vertex AI** | `backend: vertex_ai` | Google Cloud (GCS + Vertex AI) | Full experiment matrix, no local GPU |
+
+To use Vertex AI, set in `configs/model_config.yaml`:
+
+```yaml
+student:
+  backend: vertex_ai
+
+vertex_ai:
+  project: your-gcp-project-id
+  location: us-central1
+  staging_bucket: gs://your-bucket/smala
+```
+
+Then authenticate: `gcloud auth application-default login`
+
+---
+
 ## Context Window Management
 
-Hybrid Analysis sandbox reports often exceed 128k tokens. `data_filter.py` implements pre-filtering that retains only essential fields (`total_processes`, `mitre_attcks`, `signatures`) with negligible impact on benchmark performance.
+Hybrid Analysis sandbox reports often exceed 128k tokens. `data_filter.py` implements the CyberSOCEval truncation strategy (hash removal, signature description trimming to 50 chars, MITRE ATT&CK condensing to tactic/technique/attck_id only), reducing every report to under 20k tokens with negligible impact on model performance.
+
+Following CyberSOCEval's one-report-per-question paradigm, each exam question is grounded in exactly one detonation report. This guarantees every teacher API call fits within all context windows (GPT-4o 128k, Claude 200k, Gemini 1M) without dropping any reports.
 
 ---
 
