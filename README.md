@@ -83,33 +83,73 @@ SMalA/
 pip install -r requirements.txt
 ```
 
-### 2. Set up API keys
+### 2. Set up API keys (teacher LLMs)
 
 ```bash
 cp .env.example .env
-# Edit .env and fill in your keys:
-#   OPENAI_API_KEY=sk-...
-#   GOOGLE_API_KEY=AIza...
-#   ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Edit `.env` and fill in your teacher API keys:
+
+```
+OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=AIza...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 The `.env` file is in `.gitignore` and will not be committed.
 
-### 3. Run a single experiment
+### 3. Set up Google Cloud (Vertex AI for student fine-tuning)
+
+The student models are fine-tuned on Google Vertex AI. You need:
+
+```bash
+# a) Install the gcloud CLI (if not already installed)
+# https://cloud.google.com/sdk/docs/install
+
+# b) Authenticate
+gcloud auth login
+gcloud auth application-default login
+
+# c) Create a GCP project (or use an existing one)
+gcloud projects create smala-experiment --name="SMalA Experiment"
+gcloud config set project smala-experiment
+
+# d) Enable required APIs
+gcloud services enable aiplatform.googleapis.com
+gcloud services enable storage.googleapis.com
+
+# e) Create a GCS bucket for training data and adapter storage
+gcloud storage buckets create gs://smala-experiment-data --location=us-central1
+```
+
+Then update `configs/model_config.yaml` with your GCP details:
+
+```yaml
+student:
+  backend: vertex_ai
+
+vertex_ai:
+  project: smala-experiment
+  location: us-central1
+  staging_bucket: gs://smala-experiment-data/smala
+```
+
+### 4. Run a single experiment
 
 ```bash
 python main.py --config configs/model_config.yaml --truncate-input
 ```
 
 This runs one teacher-student pair as defined in `model_config.yaml`. The orchestrator will:
-1. Generate an exam from malware detonation reports
-2. Have the student SLM attempt the exam
+1. Generate exam questions (one per detonation report, CyberSOCEval style)
+2. Have the student SLM attempt each question
 3. Evaluate answers and identify weaknesses
 4. Produce a targeted synthetic curriculum
-5. Fine-tune the student with LoRA/QLoRA
+5. Fine-tune the student via Vertex AI (LoRA)
 6. Repeat until the benchmark target accuracy is reached
 
-### 4. Run the full 3×3 experiment matrix
+### 5. Run the full 3×3 experiment matrix
 
 ```bash
 python run_experiments.py --config configs/model_config.yaml --truncate-input
@@ -128,7 +168,7 @@ Each experiment saves adapters and results to `outputs/batch_N/<teacher>__<stude
 **Useful flags:**
 
 ```bash
-# Single GPU (run experiments sequentially within each batch)
+# Run experiments sequentially within each batch (default: 3 parallel)
 --max-parallel 1
 
 # Fewer rounds for a quick test run
